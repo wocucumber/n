@@ -1,0 +1,17 @@
+.form{
+    margin: auto;
+    max-width: 520px;
+    padding: 10px;
+}
+
+.card{
+    max-width: 500px;
+    margin: auto;
+}
+.close-parent{
+    text-align: center;
+}
+
+.btn-area{
+    text-align: center;
+}
