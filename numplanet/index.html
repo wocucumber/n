@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ナンプラープラネット</title>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.min.js" integrity="sha384-0pUGZvbkm6XF6gxjEnlmuGrJXVbNuzT9qBBavbLwCsOGabYfZo0T0to5eqruptLy" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dom-to-image/2.6.0/dom-to-image.min.js" integrity="sha512-01CJ9/g7e8cUmY0DFTMcUw/ikS799FHiOA0eyHsUWfOetgbx/t6oV4otQ5zXKQyIrQGTHSmRVPIgrgLcZi/WMA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <style>
+        :root{
+            --border-color: #ffc71e;
+            --border-color: #484848;
+        }
+        .numpla-wrapper{
+            width: 500px;
+            height: 500px;
+            margin: auto;
+        }
+        .numpla{
+            display: flex;
+            flex-wrap: wrap;
+            width: 500px;
+            height: 500px;
+
+            border: 2px solid var(--border-color);
+            background: white;
+
+            margin: auto;
+        }
+        .group{
+            display: flex;
+            flex-wrap: wrap;
+            width: calc(100%/3);
+            height: calc(100%/3);
+
+            border: 2px solid var(--border-color);
+        }
+        .num{
+            width: calc(100%/3);
+            height: calc(100%/3);
+
+            border: 1px solid var(--border-color);
+            display: flex;
+
+            flex-direction: column;
+            justify-content: center;
+            font-size: 3.5rem;
+            text-align: center;
+            font-weight: bold;
+        }
+        .num-child {
+            display: flex;
+            justify-content: center;
+        }
+        .empty{
+            color: #f00;
+        }
+        .num:not(.empty){
+            pointer-events: none;
+            color: black;
+        }
+        .can-place{
+            border: 10px #f00 solid;
+        }
+        #custom-items-current-lines {
+            color: green;
+        }
+        #custom-items-current-lines.custom-items-current-lines-bad {
+            color: red;
+        }
+        .custom-items-error {
+            color: red;
+        }
+    </style>
+</head>
+<body style="text-align: center;padding: 10px;">
+    
+    <div id="generating">
+        <select id="difficulty" class="form-control">
+            <option value="5">5・超初心者</option>
+            <option value="10">10・初心者</option>
+            <option value="20">20・初級</option>
+            <option value="30">30・中級</option>
+            <option value="40">40・上級</option>
+            <option value="50">50・おそろしい</option>
+            <option value="52">52・おそろしい</option>
+        </select>
+        <button class="btn btn-primary" id="generate">遊ぶ</button>
+        <button class="btn btn-info" id="to-custom">カスタム数字</button>
+    </div>
+    <div id="custom" style="display: none;">
+        <div style="display: flex;justify-content: center;gap: 1rem;">
+            <div>カスタム状態：</div>
+            <div id="custom-state" style="font-size: 1.2rem;"></div>
+        </div>
+        <p style="font-size: 0.9rem;">(このページのURLを共有すると、カスタム数字も共有できます)</p>
+        <br>
+        <label for="custom-items">カスタム数字を入力（1行につき1つ・9行にする）</label>
+        <textarea id="custom-items" class="form-control" style="max-width: 100px;margin: auto;"></textarea>
+        <p>現在<span id="custom-items-current-lines"></span></p>
+        <p id="custom-items-error" class="custom-items-error" style="display: none;">1行につき1文字にしてください</p>
+        <p id="custom-items-error2" class="custom-items-error" style="display: none;">重複があります</p>
+        <br><br>
+        <button class="btn btn-success" id="custom-confirm">OK</button>
+    </div>
+    <div id="playing" style="display: none;">
+        <div id="status" style="display: none;">
+            <div class="spinner-border text-primary" role="status" style="height: 1rem;width: 1rem;border-width: 2.5px;">
+    
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <span id="status-body">
+                生成中
+            </span>
+        </div>
+        
+        <div class="numpla-wrapper">
+            <div id="main" class="numpla"></div>
+        </div>
+        <br><br>
+
+        <div class="btn btn-warning" id="download">ダウンロード</div><br>
+        <img id="output">
+    </div>
+
+    
+
+    <script>
+        // 例: ?l=🐈,🐮,🥛,🐒,🐟,🍕,🍟,💺,🐶
+
+        const urlParamL = new URLSearchParams(location.search).get("l");
+
+        function getLettersList() {
+            const base = urlParamL;
+            
+            const splited = base && base.split(",");
+            if (!base || splited.length !== 9) return "123456789";
+
+            
+            const segmenter = new Intl.Segmenter("ja", {granularity: "grapheme"});
+
+            
+            if (splited.some(e => [...(segmenter.segment(e))].length !== 1)
+                || new Set(splited).size !== splited.length) return "123456789";
+
+            return splited;
+        }
+
+        const letters = getLettersList();
+
+        function setupGroups(){
+            $("#main").html("");
+            for(let i = 0; i < 9; i++){
+                $("#main").append(
+                    $("<div>").addClass("group").attr("group", i)
+                );
+            }
+            for(let i = 0; i < 9*9; i++){
+                const GID = getGroupId(i);
+                    
+                const g = $("[group="+(GID)+"]");
+                g.append(
+                    $("<div>").addClass("num").append(
+                        $("<div>").addClass("num-child").attr("belong-group", (GID))
+                            .attr("num", i).attr("group-i", g.children().length).text("")   
+                    )
+                );
+            }
+        }
+        function resetList(){
+            numpla.splice(0, numpla.length);
+            for(let i = 0; i < 9 * 9; i++){
+                numpla.push("");
+            }
+        }
+        function rendering(){
+            for(let i = 0; i < 9 * 9; i++){
+                $("[num="+i+"]")
+                    .html(convertNumberToText(numpla[i]))
+                    .attr("class", "num-child" + (numpla[i] == "" ? " empty" : ""))
+                    .attr("disabled", (numpla[i] == "" ? null : true))
+            }
+        }
+        async function place(i, errorTable){
+            numpla[i] = "";
+
+            const nums = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+            const end = [];
+            for(let j = 0; j < 9; j++){
+                const num = nums.splice(Math.floor(Math.random() * nums.length), 1)[0];
+                
+                if(
+                    check(i, num)
+                ){
+                    numpla[i] = num;
+
+                    break;
+                }
+                
+                end.push(num);
+                if(nums.length == 0){
+                    if(!errorTable[i])
+                        errorTable[i] = 0;
+
+                    errorTable[i]++;
+
+                    const back = errorTable[i];
+                    // const back = Math.floor(Math.random()*Math.min(i, 10))+1;
+
+                    const start = i - back;
+
+                    for(let j = start; j < i; j++){
+                        numpla[j] = "";
+                    }
+
+                    return place(start, errorTable);
+                }
+            }
+
+            if(i != 80)
+                await place(i + 1, errorTable);
+        }
+        async function remove(count=20, call=0){
+            if(count == 0) return;
+
+            const type = Math.random() > 0.5 ? "Horizontal" : "Vertical";
+
+            const i = Math.floor( Math.random() * 9 );
+            
+            if(window["get"+type+"Items"](i).join("").length >= (8 - Math.floor(call/200))){
+                const j = Math.floor( Math.random() * 9 );
+                
+                const index = window["get"+type+"Indexes"](i)[j];
+                if(numpla[index] != ""){
+                    numpla[index] = "";
+
+                    return await remove(count - 1, call + 1);
+                };
+            }
+            
+            await remove(count, call + 1);
+        }
+        async function generateNumpla(removeCount=30){
+            $("#status-body").text("完成系を生成中...");
+            await w();
+
+            resetList();
+            rendering();
+
+            let errorTable = {};
+
+            await place(0, errorTable);
+
+            generatedAnswer = [...numpla];
+            
+            async function generateRemove(){
+                numpla = [...generatedAnswer];
+
+                await remove(removeCount, 0);
+                
+                for(let i = 0; i < 5; i++){
+                    answer = await solve();
+
+                    if(answer == false || generatedAnswer.join("") != answer){
+                        await w();
+                        return await generateRemove();
+                    }
+                }
+
+            }
+
+            $("#status-body").text("穴あけ中...");
+            await generateRemove();
+
+
+            rendering();
+
+        }
+        function getGroupId(i){
+            return Math.floor(i/3) - (Math.floor(i/9)*3) + (Math.floor(i/27)*3)
+        }
+        function getGroupItems(i, np=numpla){
+            const group = getGroupId(i);
+            const res = [];
+            const base = Math.floor(group / 3)*27 + ( group % 3 * 3 );
+
+            for(let i = 0; i < 3; i++){
+                for(let j = 0; j < 3; j++){
+                    res.push( np[ base + (i * 9) + j ]);
+                }
+            }
+
+            return res;
+        }
+        function getHorizontalItems(i, np=numpla){
+            const res = [];
+            const base = Math.floor( i / 9 ) * 9;
+            for(let i = 0; i < 9; i++){
+                res.push(np[base + i]);
+            }
+            return res;
+        }
+        function getHorizontalIndexes(i){
+            const res = [];
+            const base = Math.floor( i / 9 ) * 9;
+            for(let i = 0; i < 9; i++){
+                res.push(base + i);
+            }
+            return res;
+        }
+        function getVerticalItems(i, np=numpla){
+            const res = [];
+            const base = i % 9;
+            for(let i = 0; i < 9; i++){
+                res.push(np[base + (i * 9)]);
+            }
+            return res;
+        }
+        function getVerticalIndexes(i){
+            const res = [];
+            const base = i % 9;
+            for(let i = 0; i < 9; i++){
+                res.push(base + (i * 9));
+            }
+            return res;
+        }
+        function check(i, value, np=numpla){
+            return  !getHorizontalItems(i, np).includes(value) &&
+                    !getVerticalItems(i, np)  .includes(value) &&
+                    !getGroupItems(i, np)     .includes(value)
+        }
+        
+        let numpla = [];
+        setupGroups();
+
+        // generateNumpla();
+
+        function w(){
+            return new Promise(e=>{
+                setTimeout(() => {
+                    e()
+                }, 0);
+            });
+        }
+
+        let generatedAnswer = "";
+        let answer = "";
+        async function solve(){
+            const np = [...numpla];
+
+            async function solve(count){
+                for(let i = 0; i < 9 * 9; i++){
+                    if(np[i] != "")         continue;
+                    if(Math.random() > 0.5) continue;
+
+                    const allow = [];
+                    for(let j = 0; j < 9; j++){
+                        if(check(i, j+1, np)){
+                            allow.push(j+1);
+                            if(allow.length == 2) break;
+                        }
+                    }
+                    if(allow.length != 1) continue;
+
+                    np[i] = allow[0];
+                }
+                
+                if(count > 3000)
+                    return np[0] = null;
+
+
+                if(np.includes(""))
+                    await solve(count + 1);
+
+            }
+            await solve(0);
+            
+
+            if(np[0] == null)
+                return false;
+
+            return np.join("");
+        }
+        function getCanPlaces(np=numpla){
+            const canPlaces = [];
+
+            for(let i = 0; i < 9*9; i++){
+                if(np[i] != "") continue;
+                const allow = [];
+
+                for(let j = 0; j < 9; j++){
+                    if(check(i, j+1, np)){
+                        allow.push(j+1);
+                        if(allow.length != 1) break;
+                    }
+                }
+                if(allow.length != 1) continue;
+                canPlaces.push(i);
+            }
+            return canPlaces;
+        }
+        function recheck(){
+            for(let i = 0; i < 9 * 9; i++){
+                const n = $("[num="+i+"]").val();
+                numpla[i] = n == "" ? "" : Number(n);
+            }
+            rendering();
+        }
+        function checkAnswer(){
+            recheck();
+            if(generatedAnswer.join("") == numpla.join("")){
+                alert("合格！");
+            }else{
+                alert("不合格");
+            }
+        }
+
+        $("#generate").on("click", async()=>{
+            const removeCount = $("#difficulty").val();
+            $("#generating").hide();
+            $("#main").hide();
+            
+            $("#playing").show();
+            $("#status").show();
+            await generateNumpla(removeCount);
+            $("#status").hide();
+
+            $("#main").fadeIn(500);
+        });
+        $("#download").on("click", async()=>{
+            $("#download").attr("disabled", true);
+            const url = await domtoimage.toPng($("#main")[0], {
+                width: 500,
+                height: 500
+            });
+
+            $("#output").attr("src", url).css("width", "500px").css("height", "500px");
+
+            $("#download").attr("disabled", null);
+        });
+
+        $("#to-custom").on("click", () =>{
+            $("#generating").hide();
+            $("#custom").show();
+            
+            $("#custom-state").text(urlParamL === null ? "カスタムなし" : letters === "123456789" ? "カスタム失敗" : "カスタムあり");
+            $("#custom-items").val(urlParamL !== null ? urlParamL.split(",").join("\n") : "");
+            updateCustomItemsCurrentLines();
+        });
+
+        $("#custom-items").on("input", function(){
+            updateCustomItemsCurrentLines();
+        });
+        
+        $("#custom-confirm").on("click", () => {
+            const newL = getCustomItems().join(",");
+            if (urlParamL === newL) {
+                
+                $("#custom").hide();
+                $("#generating").show();
+
+            } else location.search = "?l="+getCustomItems().join(","); 
+        });
+
+        function getCustomItems() {
+            return $("#custom-items").val().split(/[\n\r]/).filter(e => e != "");
+        }
+
+        function updateCustomItemsCurrentLines() {
+            const items = getCustomItems();
+
+            $("#custom-items-current-lines")
+                .text(items.length+"列")
+                [items.length === 9 ? "removeClass" : "addClass"]("custom-items-current-lines-bad");
+            
+                
+            const segmenter = new Intl.Segmenter("ja", {granularity: "grapheme"});
+
+            $("#custom-items-error")
+                [items.some(e => [...(segmenter.segment(e))].length !== 1) ? "show" : "hide"]();
+            
+            $("#custom-items-error2")
+                [new Set(items).size !== items.length ? "show" : "hide"]();
+                
+        }
+
+        function convertNumberToText(n) {
+            if (n === "") return "";
+            
+            return "&#"+(letters[n-1].codePointAt(0))+";";
+        }
+    </script>
+</body>
+</html>
